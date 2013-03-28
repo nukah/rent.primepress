@@ -31,6 +31,15 @@ class AccountControllerTest < ActionController::TestCase
     User.current = nil
   end
 
+  def test_get_login
+    get :login
+    assert_response :success
+    assert_template 'login'
+
+    assert_select 'input[name=username]'
+    assert_select 'input[name=password]'
+  end
+
   def test_login_should_redirect_to_back_url_param
     # request.uri is "test.host" in test environment
     post :login, :username => 'jsmith', :password => 'jsmith', :back_url => 'http://test.host/issues/show/1'
@@ -46,9 +55,11 @@ class AccountControllerTest < ActionController::TestCase
     post :login, :username => 'admin', :password => 'bad'
     assert_response :success
     assert_template 'login'
-    assert_tag 'div',
-               :attributes => { :class => "flash error" },
-               :content => /Invalid user or password/
+
+    assert_select 'div.flash.error', :text => /Invalid user or password/
+    assert_select 'input[name=username][value=admin]'
+    assert_select 'input[name=password]'
+    assert_select 'input[name=password][value]', 0
   end
 
   def test_login_should_rescue_auth_source_exception
@@ -108,8 +119,8 @@ class AccountControllerTest < ActionController::TestCase
       assert_difference 'User.count' do
         post :register, :user => {
           :login => 'register',
-          :password => 'test',
-          :password_confirmation => 'test',
+          :password => 'secret123',
+          :password_confirmation => 'secret123',
           :firstname => 'John',
           :lastname => 'Doe',
           :mail => 'register@example.com'
@@ -121,7 +132,7 @@ class AccountControllerTest < ActionController::TestCase
       assert_equal 'John', user.firstname
       assert_equal 'Doe', user.lastname
       assert_equal 'register@example.com', user.mail
-      assert user.check_password?('test')
+      assert user.check_password?('secret123')
       assert user.active?
     end
   end
@@ -207,10 +218,10 @@ class AccountControllerTest < ActionController::TestCase
     user = User.find(2)
     token = Token.create!(:action => 'recovery', :user => user)
 
-    post :lost_password, :token => token.value, :new_password => 'newpass', :new_password_confirmation => 'newpass'
+    post :lost_password, :token => token.value, :new_password => 'newpass123', :new_password_confirmation => 'newpass123'
     assert_redirected_to '/login'
     user.reload
-    assert user.check_password?('newpass')
+    assert user.check_password?('newpass123')
     assert_nil Token.find_by_id(token.id), "Token was not deleted"
   end
 
@@ -219,9 +230,9 @@ class AccountControllerTest < ActionController::TestCase
     token = Token.create!(:action => 'recovery', :user => user)
     user.lock!
 
-    post :lost_password, :token => token.value, :new_password => 'newpass', :new_password_confirmation => 'newpass'
+    post :lost_password, :token => token.value, :new_password => 'newpass123', :new_password_confirmation => 'newpass123'
     assert_redirected_to '/'
-    assert ! user.check_password?('newpass')
+    assert ! user.check_password?('newpass123')
   end
 
   def test_post_lost_password_with_token_and_password_confirmation_failure_should_redisplay_the_form

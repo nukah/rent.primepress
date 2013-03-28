@@ -78,6 +78,12 @@ class Redmine::WikiFormatting::MacrosTest < ActionView::TestCase
     assert_equal "<p>Baz: (arg1,arg2) (String) (line1\nline2)</p>", textilizable("{{baz(arg1, arg2)\nline1\nline2\n}}")
   end
 
+  def test_macro_name_with_upper_case
+    Redmine::WikiFormatting::Macros.macro(:UpperCase) {|obj, args| "Upper"}
+
+    assert_equal "<p>Upper</p>", textilizable("{{UpperCase}}")
+  end
+
   def test_multiple_macros_on_the_same_line
     Redmine::WikiFormatting::Macros.macro :foo do |obj, args|
       args.any? ? "args: #{args.join(',')}" : "no args" 
@@ -100,6 +106,25 @@ class Redmine::WikiFormatting::MacrosTest < ActionView::TestCase
     assert_equal '<p>Hello world! Object: Issue, Called with no argument and no block of text.</p>', textilizable(text, :object => Issue.find(1))
   end
 
+  def test_extract_macro_options_should_with_args
+    options = extract_macro_options(["arg1", "arg2"], :foo, :size)
+    assert_equal([["arg1", "arg2"], {}], options)
+  end
+
+  def test_extract_macro_options_should_with_options
+    options = extract_macro_options(["foo=bar", "size=2"], :foo, :size)
+    assert_equal([[], {:foo => "bar", :size => "2"}], options)
+  end
+
+  def test_extract_macro_options_should_with_args_and_options
+    options = extract_macro_options(["arg1", "arg2", "foo=bar", "size=2"], :foo, :size)
+    assert_equal([["arg1", "arg2"], {:foo => "bar", :size => "2"}], options)
+  end
+
+  def test_extract_macro_options_should_parse_options_lazily
+    options = extract_macro_options(["params=x=1&y=2"], :params)
+    assert_equal([[], {:params => "x=1&y=2"}], options)
+  end
 
   def test_macro_exception_should_be_displayed
     Redmine::WikiFormatting::Macros.macro :exception do |obj, args|
@@ -180,9 +205,40 @@ class Redmine::WikiFormatting::MacrosTest < ActionView::TestCase
     assert_include 'Page not found', textilizable(text)
   end
 
+  def test_macro_collapse
+    text = "{{collapse\n*Collapsed* block of text\n}}"
+    result = textilizable(text)
+
+    assert_select_in result, 'div.collapsed-text'
+    assert_select_in result, 'strong', :text => 'Collapsed'
+    assert_select_in result, 'a.collapsible.collapsed', :text => 'Show'
+    assert_select_in result, 'a.collapsible', :text => 'Hide'
+  end
+
+  def test_macro_collapse_with_one_arg
+    text = "{{collapse(Example)\n*Collapsed* block of text\n}}"
+    result = textilizable(text)
+
+    assert_select_in result, 'div.collapsed-text'
+    assert_select_in result, 'strong', :text => 'Collapsed'
+    assert_select_in result, 'a.collapsible.collapsed', :text => 'Example'
+    assert_select_in result, 'a.collapsible', :text => 'Example'
+  end
+
+  def test_macro_collapse_with_two_args
+    text = "{{collapse(Show example, Hide example)\n*Collapsed* block of text\n}}"
+    result = textilizable(text)
+
+    assert_select_in result, 'div.collapsed-text'
+    assert_select_in result, 'strong', :text => 'Collapsed'
+    assert_select_in result, 'a.collapsible.collapsed', :text => 'Show example'
+    assert_select_in result, 'a.collapsible', :text => 'Hide example'
+  end
+
   def test_macro_child_pages
     expected =  "<p><ul class=\"pages-hierarchy\">\n" +
-                 "<li><a href=\"/projects/ecookbook/wiki/Child_1\">Child 1</a></li>\n" +
+                 "<li><a href=\"/projects/ecookbook/wiki/Child_1\">Child 1</a>\n" +
+                 "<ul class=\"pages-hierarchy\">\n<li><a href=\"/projects/ecookbook/wiki/Child_1_1\">Child 1 1</a></li>\n</ul>\n</li>\n" +
                  "<li><a href=\"/projects/ecookbook/wiki/Child_2\">Child 2</a></li>\n" +
                  "</ul>\n</p>"
 
@@ -196,11 +252,12 @@ class Redmine::WikiFormatting::MacrosTest < ActionView::TestCase
     assert_equal expected, textilizable("{{child_pages(ecookbook:Another_page)}}", :object => WikiPage.find(1).content)
   end
 
-  def test_macro_child_pages_with_option
+  def test_macro_child_pages_with_parent_option
     expected =  "<p><ul class=\"pages-hierarchy\">\n" +
                  "<li><a href=\"/projects/ecookbook/wiki/Another_page\">Another page</a>\n" +
                  "<ul class=\"pages-hierarchy\">\n" +
-                 "<li><a href=\"/projects/ecookbook/wiki/Child_1\">Child 1</a></li>\n" +
+                 "<li><a href=\"/projects/ecookbook/wiki/Child_1\">Child 1</a>\n" +
+                 "<ul class=\"pages-hierarchy\">\n<li><a href=\"/projects/ecookbook/wiki/Child_1_1\">Child 1 1</a></li>\n</ul>\n</li>\n" +
                  "<li><a href=\"/projects/ecookbook/wiki/Child_2\">Child 2</a></li>\n" +
                  "</ul>\n</li>\n</ul>\n</p>"
 
@@ -212,6 +269,16 @@ class Redmine::WikiFormatting::MacrosTest < ActionView::TestCase
 
     @project = Project.find(2)
     assert_equal expected, textilizable("{{child_pages(ecookbook:Another_page, parent=1)}}", :object => WikiPage.find(1).content)
+  end
+
+  def test_macro_child_pages_with_depth_option
+    expected =  "<p><ul class=\"pages-hierarchy\">\n" +
+                 "<li><a href=\"/projects/ecookbook/wiki/Child_1\">Child 1</a></li>\n" +
+                 "<li><a href=\"/projects/ecookbook/wiki/Child_2\">Child 2</a></li>\n" +
+                 "</ul>\n</p>"
+
+    @project = Project.find(1)
+    assert_equal expected, textilizable("{{child_pages(depth=1)}}", :object => WikiPage.find(2).content)
   end
 
   def test_macro_child_pages_without_wiki_page_should_fail

@@ -178,6 +178,20 @@ function buildFilterRow(field, operator, values) {
     );
     $('#values_'+fieldId).val(values[0]);
     break;
+  case "relation":
+    tr.find('td.values').append(
+      '<span style="display:none;"><input type="text" name="v['+field+'][]" id="values_'+fieldId+'" size="6" class="value" /></span>' +
+      '<span style="display:none;"><select class="value" name="v['+field+'][]" id="values_'+fieldId+'_1"></select></span>'
+    );
+    $('#values_'+fieldId).val(values[0]);
+    select = tr.find('td.values select');
+    for (i=0;i<allProjects.length;i++){
+      var filterValue = allProjects[i];
+      var option = $('<option>');
+      option.val(filterValue[1]).text(filterValue[0]);
+      if (values[0] == filterValue[1]) {option.attr('selected', true)};
+      select.append(option);
+    }
   case "integer":
   case "float":
     tr.find('td.values').append(
@@ -238,11 +252,18 @@ function toggleOperator(field) {
       break;
     case "<t+":
     case ">t+":
+    case "><t+":
     case "t+":
     case ">t-":
     case "<t-":
+    case "><t-":
     case "t-":
       enableValues(field, [2]);
+      break;
+    case "=p":
+    case "=!p":
+    case "!p":
+      enableValues(field, [1]);
       break;
     default:
       enableValues(field, [0]);
@@ -464,9 +485,11 @@ function updateBulkEditFrom(url) {
 }
 
 function observeAutocompleteField(fieldId, url) {
-  $('#'+fieldId).autocomplete({
-    source: url,
-    minLength: 2,
+  $(document).ready(function() {
+    $('#'+fieldId).autocomplete({
+      source: url,
+      minLength: 2
+    });
   });
 }
 

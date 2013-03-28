@@ -88,6 +88,17 @@ class ApplicationHelperTest < ActionView::TestCase
     to_test.each { |text, result| assert_equal "<p>#{result}</p>", textilizable(text) }
   end
 
+  if 'ruby'.respond_to?(:encoding)
+    def test_auto_links_with_non_ascii_characters
+      to_test = {
+        'http://foo.bar/тест' => '<a class="external" href="http://foo.bar/тест">http://foo.bar/тест</a>'
+      }
+      to_test.each { |text, result| assert_equal "<p>#{result}</p>", textilizable(text) }
+    end
+  else
+    puts 'Skipping test_auto_links_with_non_ascii_characters, unsupported ruby version'
+  end
+
   def test_auto_mailto
     assert_equal '<p><a class="email" href="mailto:test@foo.bar">test@foo.bar</a></p>',
       textilizable('test@foo.bar')
@@ -228,11 +239,22 @@ RAW
     to_test.each { |text, result| assert_equal "<p>#{result}</p>", textilizable(text) }
   end
 
+  if 'ruby'.respond_to?(:encoding)
+    def test_textile_external_links_with_non_ascii_characters
+      to_test = {
+        'This is a "link":http://foo.bar/тест' => 'This is a <a href="http://foo.bar/тест" class="external">link</a>'
+      }
+      to_test.each { |text, result| assert_equal "<p>#{result}</p>", textilizable(text) }
+    end
+  else
+    puts 'Skipping test_textile_external_links_with_non_ascii_characters, unsupported ruby version'
+  end
+
   def test_redmine_links
     issue_link = link_to('#3', {:controller => 'issues', :action => 'show', :id => 3},
-                               :class => 'issue status-1 priority-4 overdue', :title => 'Error 281 when updating a recipe (New)')
+                               :class => 'issue status-1 priority-4 priority-lowest overdue', :title => 'Error 281 when updating a recipe (New)')
     note_link = link_to('#3', {:controller => 'issues', :action => 'show', :id => 3, :anchor => 'note-14'},
-                               :class => 'issue status-1 priority-4 overdue', :title => 'Error 281 when updating a recipe (New)')
+                               :class => 'issue status-1 priority-4 priority-lowest overdue', :title => 'Error 281 when updating a recipe (New)')
 
     changeset_link = link_to('r1', {:controller => 'repositories', :action => 'revision', :id => 'ecookbook', :rev => 1},
                                    :class => 'changeset', :title => 'My very first commit')
@@ -253,8 +275,15 @@ RAW
 
     project_url = {:controller => 'projects', :action => 'show', :id => 'subproject1'}
 
-    source_url = {:controller => 'repositories', :action => 'entry', :id => 'ecookbook', :path => ['some', 'file']}
-    source_url_with_ext = {:controller => 'repositories', :action => 'entry', :id => 'ecookbook', :path => ['some', 'file.ext']}
+    source_url = '/projects/ecookbook/repository/entry/some/file'
+    source_url_with_rev = '/projects/ecookbook/repository/revisions/52/entry/some/file'
+    source_url_with_ext = '/projects/ecookbook/repository/entry/some/file.ext'
+    source_url_with_rev_and_ext = '/projects/ecookbook/repository/revisions/52/entry/some/file.ext'
+
+    export_url = '/projects/ecookbook/repository/raw/some/file'
+    export_url_with_rev = '/projects/ecookbook/repository/revisions/52/raw/some/file'
+    export_url_with_ext = '/projects/ecookbook/repository/raw/some/file.ext'
+    export_url_with_rev_and_ext = '/projects/ecookbook/repository/revisions/52/raw/some/file.ext'
 
     to_test = {
       # tickets
@@ -284,12 +313,16 @@ RAW
       'source:/some/file. '         => link_to('source:/some/file', source_url, :class => 'source') + ".",
       'source:/some/file.ext. '     => link_to('source:/some/file.ext', source_url_with_ext, :class => 'source') + ".",
       'source:/some/file, '         => link_to('source:/some/file', source_url, :class => 'source') + ",",
-      'source:/some/file@52'        => link_to('source:/some/file@52', source_url.merge(:rev => 52), :class => 'source'),
-      'source:/some/file.ext@52'    => link_to('source:/some/file.ext@52', source_url_with_ext.merge(:rev => 52), :class => 'source'),
-      'source:/some/file#L110'      => link_to('source:/some/file#L110', source_url.merge(:anchor => 'L110'), :class => 'source'),
-      'source:/some/file.ext#L110'  => link_to('source:/some/file.ext#L110', source_url_with_ext.merge(:anchor => 'L110'), :class => 'source'),
-      'source:/some/file@52#L110'   => link_to('source:/some/file@52#L110', source_url.merge(:rev => 52, :anchor => 'L110'), :class => 'source'),
-      'export:/some/file'           => link_to('export:/some/file', source_url.merge(:format => 'raw'), :class => 'source download'),
+      'source:/some/file@52'        => link_to('source:/some/file@52', source_url_with_rev, :class => 'source'),
+      'source:/some/file.ext@52'    => link_to('source:/some/file.ext@52', source_url_with_rev_and_ext, :class => 'source'),
+      'source:/some/file#L110'      => link_to('source:/some/file#L110', source_url + "#L110", :class => 'source'),
+      'source:/some/file.ext#L110'  => link_to('source:/some/file.ext#L110', source_url_with_ext + "#L110", :class => 'source'),
+      'source:/some/file@52#L110'   => link_to('source:/some/file@52#L110', source_url_with_rev + "#L110", :class => 'source'),
+      # export
+      'export:/some/file'           => link_to('export:/some/file', export_url, :class => 'source download'),
+      'export:/some/file.ext'       => link_to('export:/some/file.ext', export_url_with_ext, :class => 'source download'),
+      'export:/some/file@52'        => link_to('export:/some/file@52', export_url_with_rev, :class => 'source download'),
+      'export:/some/file.ext@52'    => link_to('export:/some/file.ext@52', export_url_with_rev_and_ext, :class => 'source download'),
       # forum
       'forum#2'                     => link_to('Discussion', board_url, :class => 'board'),
       'forum:Discussion'            => link_to('Discussion', board_url, :class => 'board'),
@@ -312,6 +345,15 @@ RAW
     }
     @project = Project.find(1)
     to_test.each { |text, result| assert_equal "<p>#{result}</p>", textilizable(text), "#{text} failed" }
+  end
+
+  def test_redmine_links_with_a_different_project_before_current_project
+    vp1 = Version.generate!(:project_id => 1, :name => '1.4.4')
+    vp3 = Version.generate!(:project_id => 3, :name => '1.4.4')
+
+    @project = Project.find(3)
+    assert_equal %(<p><a href="/versions/#{vp1.id}" class="version">1.4.4</a> <a href="/versions/#{vp3.id}" class="version">1.4.4</a></p>),
+      textilizable("ecookbook:version:1.4.4 version:1.4.4")
   end
 
   def test_escaped_redmine_links_should_not_be_parsed
@@ -361,14 +403,14 @@ RAW
   end
 
   def test_multiple_repositories_redmine_links
-    svn = Repository::Subversion.create!(:project_id => 1, :identifier => 'svn1', :url => 'file:///foo/hg')
+    svn = Repository::Subversion.create!(:project_id => 1, :identifier => 'svn_repo-1', :url => 'file:///foo/hg')
     Changeset.create!(:repository => svn, :committed_on => Time.now, :revision => '123')
     hg = Repository::Mercurial.create!(:project_id => 1, :identifier => 'hg1', :url => '/foo/hg')
     Changeset.create!(:repository => hg, :committed_on => Time.now, :revision => '123', :scmid => 'abcd')
 
     changeset_link = link_to('r2', {:controller => 'repositories', :action => 'revision', :id => 'ecookbook', :rev => 2},
                                     :class => 'changeset', :title => 'This commit fixes #1, #2 and references #1 & #3')
-    svn_changeset_link = link_to('svn1|r123', {:controller => 'repositories', :action => 'revision', :id => 'ecookbook', :repository_id => 'svn1', :rev => 123},
+    svn_changeset_link = link_to('svn_repo-1|r123', {:controller => 'repositories', :action => 'revision', :id => 'ecookbook', :repository_id => 'svn_repo-1', :rev => 123},
                                     :class => 'changeset', :title => '')
     hg_changeset_link = link_to('hg1|abcd', {:controller => 'repositories', :action => 'revision', :id => 'ecookbook', :repository_id => 'hg1', :rev => 'abcd'},
                                     :class => 'changeset', :title => '')
@@ -378,7 +420,7 @@ RAW
 
     to_test = {
       'r2'                          => changeset_link,
-      'svn1|r123'                   => svn_changeset_link,
+      'svn_repo-1|r123'             => svn_changeset_link,
       'invalid|r123'                => 'invalid|r123',
       'commit:hg1|abcd'             => hg_changeset_link,
       'commit:invalid|abcd'         => 'commit:invalid|abcd',
@@ -516,6 +558,15 @@ RAW
       'attachment:error281.txt'      => attachment_link
     }
     to_test.each { |text, result| assert_equal "<p>#{result}</p>", textilizable(text, :attachments => Issue.find(3).attachments), "#{text} failed" }
+  end
+
+  def test_attachment_link_should_link_to_latest_attachment
+    set_tmp_attachments_directory
+    a1 = Attachment.generate!(:filename => "test.txt", :created_on => 1.hour.ago)
+    a2 = Attachment.generate!(:filename => "test.txt")
+
+    assert_equal %(<p><a href="/attachments/download/#{a2.id}" class="attachment">test.txt</a></p>),
+      textilizable('attachment:test.txt', :attachments => [a1, a2])
   end
 
   def test_wiki_links
@@ -690,7 +741,7 @@ RAW
 
     expected = <<-EXPECTED
 <p><a href="/projects/ecookbook/wiki/CookBook_documentation" class="wiki-page">CookBook documentation</a></p>
-<p><a href="/issues/1" class="issue status-1 priority-4" title="Can&#x27;t print recipes (New)">#1</a></p>
+<p><a href="/issues/1" class="issue status-1 priority-4 priority-lowest" title="Can&#x27;t print recipes (New)">#1</a></p>
 <pre>
 [[CookBook documentation]]
 
@@ -999,15 +1050,23 @@ RAW
 
   def test_link_to_user
     user = User.find(2)
-    t = link_to_user(user)
-    assert_equal "<a href=\"/users/2\">#{ user.name }</a>", t
+    assert_equal '<a href="/users/2" class="user active">John Smith</a>', link_to_user(user)
   end
 
   def test_link_to_user_should_not_link_to_locked_user
-    user = User.find(5)
-    assert user.locked?
-    t = link_to_user(user)
-    assert_equal user.name, t
+    with_current_user nil do
+      user = User.find(5)
+      assert user.locked?
+      assert_equal 'Dave2 Lopper2', link_to_user(user)
+    end
+  end
+
+  def test_link_to_user_should_link_to_locked_user_if_current_user_is_admin
+    with_current_user User.find(1) do
+      user = User.find(5)
+      assert user.locked?
+      assert_equal '<a href="/users/5" class="user locked">Dave2 Lopper2</a>', link_to_user(user)
+    end
   end
 
   def test_link_to_user_should_not_link_to_anonymous

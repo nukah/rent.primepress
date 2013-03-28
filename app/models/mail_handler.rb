@@ -124,6 +124,7 @@ class MailHandler < ActionMailer::Base
 
   def dispatch
     headers = [email.in_reply_to, email.references].flatten.compact
+    subject = email.subject.to_s
     if headers.detect {|h| h.to_s =~ MESSAGE_ID_RE}
       klass, object_id = $1, $2.to_i
       method_name = "receive_#{klass}_reply"
@@ -132,9 +133,9 @@ class MailHandler < ActionMailer::Base
       else
         # ignoring it
       end
-    elsif m = email.subject.match(ISSUE_REPLY_SUBJECT_RE)
+    elsif m = subject.match(ISSUE_REPLY_SUBJECT_RE)
       receive_issue_reply(m[1].to_i)
-    elsif m = email.subject.match(MESSAGE_REPLY_SUBJECT_RE)
+    elsif m = subject.match(MESSAGE_REPLY_SUBJECT_RE)
       receive_message_reply(m[1].to_i)
     else
       dispatch_to_default
@@ -181,7 +182,7 @@ class MailHandler < ActionMailer::Base
   end
 
   # Adds a note to an existing issue
-  def receive_issue_reply(issue_id)
+  def receive_issue_reply(issue_id, from_journal=nil)
     issue = Issue.find_by_id(issue_id)
     return unless issue
     # check permission
@@ -196,6 +197,10 @@ class MailHandler < ActionMailer::Base
     @@handler_options[:issue].clear
 
     journal = issue.init_journal(user)
+    if from_journal && from_journal.private_notes?
+      # If the received email was a reply to a private note, make the added note private
+      issue.private_notes = true
+    end
     issue.safe_attributes = issue_attributes_from_keywords(issue)
     issue.safe_attributes = {'custom_field_values' => custom_field_values_from_keywords(issue)}
     journal.notes = cleaned_up_text_body
@@ -211,7 +216,7 @@ class MailHandler < ActionMailer::Base
   def receive_journal_reply(journal_id)
     journal = Journal.find_by_id(journal_id)
     if journal && journal.journalized_type == 'Issue'
-      receive_issue_reply(journal.journalized_id)
+      receive_issue_reply(journal.journalized_id, journal)
     end
   end
 
@@ -369,18 +374,6 @@ class MailHandler < ActionMailer::Base
 
   def cleaned_up_subject
     subject = email.subject.to_s
-    unless subject.respond_to?(:encoding)
-      # try to reencode to utf8 manually with ruby1.8
-      begin
-        if h = email.header[:subject]
-          if m = h.value.match(/^=\?([^\?]+)\?/)
-            subject = Redmine::CodesetUtil.to_utf8(subject, m[1])
-          end
-        end
-      rescue
-        # nop
-      end
-    end
     subject.strip[0,255]
   end
 

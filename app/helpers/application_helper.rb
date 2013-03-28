@@ -47,8 +47,8 @@ module ApplicationHelper
   def link_to_user(user, options={})
     if user.is_a?(User)
       name = h(user.name(options[:format]))
-      if user.active?
-        link_to name, :controller => 'users', :action => 'show', :id => user
+      if user.active? || (User.current.admin? && user.logged?)
+        link_to name, user_path(user), :class => user.css_classes
       else
         name
       end
@@ -64,10 +64,12 @@ module ApplicationHelper
   #   link_to_issue(issue, :truncate => 6)        # => Defect #6: This i...
   #   link_to_issue(issue, :subject => false)     # => Defect #6
   #   link_to_issue(issue, :project => true)      # => Foo - Defect #6
+  #   link_to_issue(issue, :subject => false, :tracker => false)     # => #6
   #
   def link_to_issue(issue, options={})
     title = nil
     subject = nil
+    text = options[:tracker] == false ? "##{issue.id}" : "#{issue.tracker} ##{issue.id}"
     if options[:subject] == false
       title = truncate(issue.subject, :length => 60)
     else
@@ -76,9 +78,7 @@ module ApplicationHelper
         subject = truncate(subject, :length => options[:truncate])
       end
     end
-    s = link_to "#{h(issue.tracker)} ##{issue.id}", {:controller => "issues", :action => "show", :id => issue},
-                                                 :class => issue.css_classes,
-                                                 :title => title
+    s = link_to text, issue_path(issue), :class => issue.css_classes, :title => title
     s << h(": #{subject}") if subject
     s = h("#{issue.project} - ") + s if options[:project]
     s
@@ -145,6 +145,10 @@ module ApplicationHelper
       url = {:controller => 'projects', :action => 'show', :id => project}.merge(options)
       link_to(h(project), url, html_options)
     end
+  end
+
+  def wiki_page_path(page, options={})
+    url_for({:controller => 'wiki', :action => 'show', :project_id => page.project, :id => page.title}.merge(options))
   end
 
   def thumbnail_tag(attachment)
@@ -234,7 +238,7 @@ module ApplicationHelper
       content << "<ul class=\"pages-hierarchy\">\n"
       pages[node].each do |page|
         content << "<li>"
-        content << link_to(h(page.pretty_title), {:controller => 'wiki', :action => 'show', :project_id => page.project, :id => page.title},
+        content << link_to(h(page.pretty_title), {:controller => 'wiki', :action => 'show', :project_id => page.project, :id => page.title, :version => nil},
                            :title => (options[:timestamp] && page.updated_on ? l(:label_updated_time, distance_of_time_in_words(Time.now, page.updated_on)) : nil))
         content << "\n" + render_page_hierarchy(pages, page.id, options) if pages[page.id]
         content << "</li>\n"
@@ -325,6 +329,15 @@ module ApplicationHelper
       s << %(<optgroup label="#{h(l(:label_group_plural))}">#{groups}</optgroup>)
     end
     s.html_safe
+  end
+
+  # Options for the new membership projects combo-box
+  def options_for_membership_project_select(principal, projects)
+    options = content_tag('option', "--- #{l(:actionview_instancetag_blank_option)} ---")
+    options << project_tree_options_for_select(projects) do |p|
+      {:disabled => principal.projects.include?(p)}
+    end
+    options
   end
 
   # Truncates and returns the string as a single line
@@ -584,8 +597,9 @@ module ApplicationHelper
 
   def parse_inline_attachments(text, project, obj, attr, only_path, options)
     # when using an image link, try to use an attachment, if possible
-    if options[:attachments] || (obj && obj.respond_to?(:attachments))
-      attachments = options[:attachments] || obj.attachments
+    attachments = options[:attachments] || []
+    attachments += obj.attachments if obj.respond_to?(:attachments)
+    if attachments.present?
       text.gsub!(/src="([^\/"]+\.(bmp|gif|jpg|jpe|jpeg|png))"(\s+alt="([^"]*)")?/i) do |m|
         filename, ext, alt, alttext = $1.downcase, $2, $3, $4
         # search for the picture in attachments
@@ -644,7 +658,7 @@ module ApplicationHelper
               wiki_page_id = page.present? ? Wiki.titleize(page) : nil
               parent = wiki_page.nil? && obj.is_a?(WikiContent) && obj.page && project == link_project ? obj.page.title : nil
               url_for(:only_path => only_path, :controller => 'wiki', :action => 'show', :project_id => link_project, 
-               :id => wiki_page_id, :anchor => anchor, :parent => parent)
+               :id => wiki_page_id, :version => nil, :anchor => anchor, :parent => parent)
             end
           end
           link_to(title.present? ? title.html_safe : h(page), url, :class => ('wiki-page' + (wiki_page ? '' : ' new')))
@@ -690,10 +704,11 @@ module ApplicationHelper
   #     identifier:document:"Some document"
   #     identifier:version:1.0.0
   #     identifier:source:some/file
-  def parse_redmine_links(text, project, obj, attr, only_path, options)
-    text.gsub!(%r{([\s\(,\-\[\>]|^)(!)?(([a-z0-9\-_]+):)?(attachment|document|version|forum|news|message|project|commit|source|export)?(((#)|((([a-z0-9\-]+)\|)?(r)))((\d+)((#note)?-(\d+))?)|(:)([^"\s<>][^\s<>]*?|"[^"]+?"))(?=(?=[[:punct:]][^A-Za-z0-9_/])|,|\s|\]|<|$)}) do |m|
+  def parse_redmine_links(text, default_project, obj, attr, only_path, options)
+    text.gsub!(%r{([\s\(,\-\[\>]|^)(!)?(([a-z0-9\-_]+):)?(attachment|document|version|forum|news|message|project|commit|source|export)?(((#)|((([a-z0-9\-_]+)\|)?(r)))((\d+)((#note)?-(\d+))?)|(:)([^"\s<>][^\s<>]*?|"[^"]+?"))(?=(?=[[:punct:]][^A-Za-z0-9_/])|,|\s|\]|<|$)}) do |m|
       leading, esc, project_prefix, project_identifier, prefix, repo_prefix, repo_identifier, sep, identifier, comment_suffix, comment_id = $1, $2, $3, $4, $5, $10, $11, $8 || $12 || $18, $14 || $19, $15, $17
       link = nil
+      project = default_project
       if project_identifier
         project = Project.visible.find_by_identifier(project_identifier)
       end
@@ -779,7 +794,7 @@ module ApplicationHelper
           when 'commit', 'source', 'export'
             if project
               repository = nil
-              if name =~ %r{^(([a-z0-9\-]+)\|)(.+)$}
+              if name =~ %r{^(([a-z0-9\-_]+)\|)(.+)$}
                 repo_prefix, repo_identifier, name = $1, $2, $3
                 repository = project.repositories.detect {|repo| repo.identifier == repo_identifier}
               else
@@ -795,11 +810,10 @@ module ApplicationHelper
                 if repository && User.current.allowed_to?(:browse_repository, project)
                   name =~ %r{^[/\\]*(.*?)(@([0-9a-f]+))?(#(L\d+))?$}
                   path, rev, anchor = $1, $3, $5
-                  link = link_to h("#{project_prefix}#{prefix}:#{repo_prefix}#{name}"), {:controller => 'repositories', :action => 'entry', :id => project, :repository_id => repository.identifier_param,
+                  link = link_to h("#{project_prefix}#{prefix}:#{repo_prefix}#{name}"), {:controller => 'repositories', :action => (prefix == 'export' ? 'raw' : 'entry'), :id => project, :repository_id => repository.identifier_param,
                                                           :path => to_path_param(path),
                                                           :rev => rev,
-                                                          :anchor => anchor,
-                                                          :format => (prefix == 'export' ? 'raw' : nil)},
+                                                          :anchor => anchor},
                                                          :class => (prefix == 'export' ? 'source download' : 'source')
                 end
               end
@@ -807,7 +821,7 @@ module ApplicationHelper
             end
           when 'attachment'
             attachments = options[:attachments] || (obj && obj.respond_to?(:attachments) ? obj.attachments : nil)
-            if attachments && attachment = attachments.detect {|a| a.filename == name }
+            if attachments && attachment = Attachment.latest_attach(attachments, name)
               link = link_to h(attachment.filename), {:only_path => only_path, :controller => 'attachments', :action => 'download', :id => attachment},
                                                      :class => 'attachment'
             end
@@ -959,8 +973,7 @@ module ApplicationHelper
   end
 
   def lang_options_for_select(blank=true)
-    (blank ? [["(auto)", ""]] : []) +
-      valid_languages.collect{|lang| [ ll(lang.to_s, :general_lang_name), lang.to_s]}.sort{|x,y| x.last <=> y.last }
+    (blank ? [["(auto)", ""]] : []) + languages_options
   end
 
   def label_tag_for(name, option_tags = nil, options = {})

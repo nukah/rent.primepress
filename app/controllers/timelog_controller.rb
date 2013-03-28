@@ -138,7 +138,7 @@ class TimelogController < ApplicationController
                 :time_entry => {:issue_id => @time_entry.issue_id, :activity_id => @time_entry.activity_id},
                 :back_url => params[:back_url]
             else
-              redirect_to :action => 'new', 
+              redirect_to :action => 'new',
                 :time_entry => {:project_id => @time_entry.project_id, :issue_id => @time_entry.issue_id, :activity_id => @time_entry.activity_id},
                 :back_url => params[:back_url]
             end
@@ -308,6 +308,9 @@ private
       when 'last_week'
         @from = Date.today - 7 - (Date.today.cwday - 1)%7
         @to = @from + 6
+      when 'last_2_weeks'
+        @from = Date.today - 14 - (Date.today.cwday - 1)%7
+        @to = @from + 13
       when '7_days'
         @from = Date.today - 7
         @to = Date.today

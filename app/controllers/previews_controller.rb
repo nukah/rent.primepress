@@ -26,7 +26,8 @@ class PreviewsController < ApplicationController
       if @description && @description.gsub(/(\r?\n|\n\r?)/, "\n") == @issue.description.to_s.gsub(/(\r?\n|\n\r?)/, "\n")
         @description = nil
       end
-      @notes = params[:notes]
+      # params[:notes] is useful for preview of notes in issue history
+      @notes = params[:notes] || (params[:issue] ? params[:issue][:notes] : nil)
     else
       @description = (params[:issue] ? params[:issue][:description] : nil)
     end
@@ -34,6 +35,10 @@ class PreviewsController < ApplicationController
   end
 
   def news
+    if params[:id].present? && news = News.visible.find_by_id(params[:id])
+      @previewed = news
+      @attachments = news.attachments
+    end
     @text = (params[:news] ? params[:news][:description] : nil)
     render :partial => 'common/preview'
   end

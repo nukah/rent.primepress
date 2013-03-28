@@ -18,7 +18,7 @@
 require File.expand_path('../../test_helper', __FILE__)
 
 class VersionTest < ActiveSupport::TestCase
-  fixtures :projects, :users, :issues, :issue_statuses, :trackers, :enumerations, :versions
+  fixtures :projects, :users, :issues, :issue_statuses, :trackers, :enumerations, :versions, :projects_trackers
 
   def setup
   end
@@ -32,7 +32,13 @@ class VersionTest < ActiveSupport::TestCase
 
   def test_invalid_effective_date_validation
     v = Version.new(:project => Project.find(1), :name => '1.1', :effective_date => '99999-01-01')
-    assert !v.save
+    assert !v.valid?
+    v.effective_date = '2012-11-33'
+    assert !v.valid?
+    v.effective_date = '2012-31-11'
+    assert !v.valid?
+    v.effective_date = 'ABC'
+    assert !v.valid?
     assert_include I18n.translate('activerecord.errors.messages.not_a_date'),
                    v.errors[:effective_date]
   end
@@ -117,6 +123,11 @@ class VersionTest < ActiveSupport::TestCase
 
     assert_equal [v5, v3, v1, v2, v4], [v1, v2, v3, v4, v5].sort
     assert_equal [v5, v3, v1, v2, v4], Version.sorted.all
+  end
+
+  def test_completed_should_be_false_when_due_today
+    version = Version.create!(:project_id => 1, :effective_date => Date.today, :name => 'Due today')
+    assert_equal false, version.completed?
   end
 
   context "#behind_schedule?" do

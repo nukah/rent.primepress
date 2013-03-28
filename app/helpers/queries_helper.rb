@@ -19,11 +19,43 @@
 
 module QueriesHelper
   def filters_options_for_select(query)
+    options_for_select(filters_options(query))
+  end
+
+  def filters_options(query)
     options = [[]]
-    options += query.available_filters.sort {|a,b| a[1][:order] <=> b[1][:order]}.map do |field, field_options|
+    sorted_options = query.available_filters.sort do |a, b|
+      ord = 0
+      if !(a[1][:order] == 20 && b[1][:order] == 20) 
+        ord = a[1][:order] <=> b[1][:order]
+      else
+        cn = (CustomField::CUSTOM_FIELDS_NAMES.index(a[1][:field].class.name) <=>
+                CustomField::CUSTOM_FIELDS_NAMES.index(b[1][:field].class.name))
+        if cn != 0
+          ord = cn
+        else
+          f = (a[1][:field] <=> b[1][:field])
+          if f != 0
+            ord = f
+          else
+            # assigned_to or author 
+            ord = (a[0] <=> b[0])
+          end
+        end
+      end
+      ord
+    end
+    options += sorted_options.map do |field, field_options|
       [field_options[:name], field]
     end
-    options_for_select(options)
+  end
+
+  def available_block_columns_tags(query)
+    tags = ''.html_safe
+    query.available_block_columns.each do |column|
+      tags << content_tag('label', check_box_tag('c[]', column.name.to_s, query.has_column?(column)) + " #{column.caption}", :class => 'inline')
+    end
+    tags
   end
 
   def column_header(column)
@@ -35,7 +67,7 @@ module QueriesHelper
   def column_content(column, issue)
     value = column.value(issue)
     if value.is_a?(Array)
-      value.collect {|v| column_value(column, issue, v)}.compact.sort.join(', ').html_safe
+      value.collect {|v| column_value(column, issue, v)}.compact.join(', ').html_safe
     else
       column_value(column, issue, value)
     end
@@ -46,6 +78,8 @@ module QueriesHelper
     when 'String'
       if column.name == :subject
         link_to(h(value), :controller => 'issues', :action => 'show', :id => issue)
+      elsif column.name == :description
+        issue.description? ? content_tag('div', textilizable(issue, :description), :class => "wiki") : ''
       else
         h(value)
       end
@@ -53,14 +87,14 @@ module QueriesHelper
       format_time(value)
     when 'Date'
       format_date(value)
-    when 'Fixnum', 'Float'
+    when 'Fixnum'
       if column.name == :done_ratio
         progress_bar(value, :width => '80px')
-      elsif  column.name == :spent_hours
-        sprintf "%.2f", value
       else
-        h(value.to_s)
+        value.to_s
       end
+    when 'Float'
+      sprintf "%.2f", value
     when 'User'
       link_to_user value
     when 'Project'
@@ -73,6 +107,11 @@ module QueriesHelper
       l(:general_text_No)
     when 'Issue'
       link_to_issue(value, :subject => false)
+    when 'IssueRelation'
+      other = value.other_issue(issue)
+      content_tag('span',
+        (l(value.label_for(issue)) + " " + link_to_issue(other, :subject => false, :tracker => false)).html_safe,
+        :class => value.css_classes_for(issue))
     else
       h(value)
     end

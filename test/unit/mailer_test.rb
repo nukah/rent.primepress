@@ -336,6 +336,35 @@ class MailerTest < ActiveSupport::TestCase
     end
   end
 
+  def test_issue_edit_should_send_private_notes_to_users_with_permission_only
+    journal = Journal.find(1)
+    journal.private_notes = true
+    journal.save!
+
+    Role.find(2).add_permission! :view_private_notes
+    Mailer.issue_edit(journal).deliver
+    assert_equal %w(dlopper@somenet.foo jsmith@somenet.foo), ActionMailer::Base.deliveries.last.bcc.sort
+
+    Role.find(2).remove_permission! :view_private_notes
+    Mailer.issue_edit(journal).deliver
+    assert_equal %w(jsmith@somenet.foo), ActionMailer::Base.deliveries.last.bcc.sort
+  end
+
+  def test_issue_edit_should_send_private_notes_to_watchers_with_permission_only
+    Issue.find(1).set_watcher(User.find_by_login('someone'))
+    journal = Journal.find(1)
+    journal.private_notes = true
+    journal.save!
+
+    Role.non_member.add_permission! :view_private_notes
+    Mailer.issue_edit(journal).deliver
+    assert_include 'someone@foo.bar', ActionMailer::Base.deliveries.last.bcc.sort
+
+    Role.non_member.remove_permission! :view_private_notes
+    Mailer.issue_edit(journal).deliver
+    assert_not_include 'someone@foo.bar', ActionMailer::Base.deliveries.last.bcc.sort
+  end
+
   def test_document_added
     document = Document.find(1)
     valid_languages.each do |lang|

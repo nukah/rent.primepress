@@ -432,6 +432,16 @@ class RepositoriesGitControllerTest < ActionController::TestCase
       end
     end
 
+    def test_diff_should_show_filenames
+      get :diff, :id => PRJ_ID, :rev => 'deff712f05a90d96edbd70facc47d944be5897e3', :type => 'inline'
+      assert_response :success
+      assert_template 'diff'
+      # modified file
+      assert_select 'th.filename', :text => 'sources/watchers_controller.rb'
+      # deleted file
+      assert_select 'th.filename', :text => 'test.txt'
+    end
+
     def test_save_diff_type
       user1 = User.find(1)
       user1.pref[:diff_type] = nil
@@ -530,6 +540,21 @@ class RepositoriesGitControllerTest < ActionController::TestCase
           end
         end
       end
+    end
+
+    def test_revisions
+      assert_equal 0, @repository.changesets.count
+      @repository.fetch_changesets
+      @project.reload
+      assert_equal NUM_REV, @repository.changesets.count
+      get :revisions, :id => PRJ_ID
+      assert_response :success
+      assert_template 'revisions'
+      assert_tag :tag => 'form',
+                 :attributes => {
+                   :method => 'get',
+                   :action => '/projects/subproject1/repository/revision'
+                 }
     end
 
     def test_revision

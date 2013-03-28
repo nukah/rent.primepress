@@ -33,11 +33,13 @@ class Version < ActiveRecord::Base
   validates_format_of :effective_date, :with => /^\d{4}-\d{2}-\d{2}$/, :message => :not_a_date, :allow_nil => true
   validates_inclusion_of :status, :in => VERSION_STATUSES
   validates_inclusion_of :sharing, :in => VERSION_SHARINGS
+  validate :validate_version
 
-  scope :named, lambda {|arg| { :conditions => ["LOWER(#{table_name}.name) = LOWER(?)", arg.to_s.strip]}}
-  scope :open, :conditions => {:status => 'open'}
-  scope :visible, lambda {|*args| { :include => :project,
-                                          :conditions => Project.allowed_to_condition(args.first || User.current, :view_issues) } }
+  scope :named, lambda {|arg| where("LOWER(#{table_name}.name) = LOWER(?)", arg.to_s.strip)}
+  scope :open, where(:status => 'open')
+  scope :visible, lambda {|*args|
+    includes(:project).where(Project.allowed_to_condition(args.first || User.current, :view_issues))
+  }
 
   safe_attributes 'name', 
     'description',
@@ -78,7 +80,7 @@ class Version < ActiveRecord::Base
 
   # Returns the total reported time for this version
   def spent_hours
-    @spent_hours ||= TimeEntry.sum(:hours, :joins => :issue, :conditions => ["#{Issue.table_name}.fixed_version_id = ?", id]).to_f
+    @spent_hours ||= TimeEntry.joins(:issue).where("#{Issue.table_name}.fixed_version_id = ?", id).sum(:hours).to_f
   end
 
   def closed?
@@ -91,7 +93,7 @@ class Version < ActiveRecord::Base
 
   # Returns true if the version is completed: due date reached and no open issues
   def completed?
-    effective_date && (effective_date <= Date.today) && (open_issues_count == 0)
+    effective_date && (effective_date < Date.today) && (open_issues_count == 0)
   end
 
   def behind_schedule?
@@ -267,12 +269,16 @@ class Version < ActiveRecord::Base
       if issues_count > 0
         ratio = open ? 'done_ratio' : 100
 
-        done = fixed_issues.sum("COALESCE(estimated_hours, #{estimated_average}) * #{ratio}",
-                                  :joins => :status,
-                                  :conditions => ["#{IssueStatus.table_name}.is_closed = ?", !open]).to_f
+        done = fixed_issues.open(open).sum("COALESCE(estimated_hours, #{estimated_average}) * #{ratio}").to_f
         progress = done / (estimated_average * issues_count)
       end
       progress
+    end
+  end
+
+  def validate_version
+    if effective_date.nil? && @attributes['effective_date'].present?
+      errors.add :effective_date, :not_a_date
     end
   end
 end

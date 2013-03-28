@@ -65,7 +65,7 @@ module IssuesHelper
     s = ''
     ancestors = issue.root? ? [] : issue.ancestors.visible.all
     ancestors.each do |ancestor|
-      s << '<div>' + content_tag('p', link_to_issue(ancestor))
+      s << '<div>' + content_tag('p', link_to_issue(ancestor, :project => (issue.project_id != ancestor.project_id)))
     end
     s << '<div>'
     subject = h(issue.subject)
@@ -80,16 +80,27 @@ module IssuesHelper
   def render_descendants_tree(issue)
     s = '<form><table class="list issues">'
     issue_list(issue.descendants.visible.sort_by(&:lft)) do |child, level|
+      css = "issue issue-#{child.id} hascontextmenu"
+      css << " idnt idnt-#{level}" if level > 0
       s << content_tag('tr',
              content_tag('td', check_box_tag("ids[]", child.id, false, :id => nil), :class => 'checkbox') +
-             content_tag('td', link_to_issue(child, :truncate => 60), :class => 'subject') +
+             content_tag('td', link_to_issue(child, :truncate => 60, :project => (issue.project_id != child.project_id)), :class => 'subject') +
              content_tag('td', h(child.status)) +
              content_tag('td', link_to_user(child.assigned_to)) +
              content_tag('td', progress_bar(child.done_ratio, :width => '80px')),
-             :class => "issue issue-#{child.id} hascontextmenu #{level > 0 ? "idnt idnt-#{level}" : nil}")
+             :class => css)
     end
     s << '</table></form>'
     s.html_safe
+  end
+
+  # Returns a link for adding a new subtask to the given issue
+  def link_to_new_subtask(issue)
+    attrs = {
+      :tracker_id => issue.tracker,
+      :parent_issue_id => issue
+    }
+    link_to(l(:button_add), new_project_issue_path(issue.project, :issue => attrs))
   end
 
   class IssueFieldsRows
@@ -339,7 +350,10 @@ module IssuesHelper
     association = Issue.reflect_on_association(field.to_sym)
     if association
       record = association.class_name.constantize.find_by_id(id)
-      return record.name if record
+      if record
+        record.name.force_encoding('UTF-8') if record.name.respond_to?(:force_encoding)
+        return record.name
+      end
     end
   end
 
@@ -360,12 +374,16 @@ module IssuesHelper
   def issues_to_csv(issues, project, query, options={})
     decimal_separator = l(:general_csv_decimal_separator)
     encoding = l(:general_csv_encoding)
-    columns = (options[:columns] == 'all' ? query.available_columns : query.columns)
+    columns = (options[:columns] == 'all' ? query.available_inline_columns : query.inline_columns)
+    if options[:description]
+      if description = query.available_columns.detect {|q| q.name == :description}
+        columns << description
+      end
+    end
 
     export = FCSV.generate(:col_sep => l(:general_csv_separator)) do |csv|
       # csv header fields
-      csv << [ "#" ] + columns.collect {|c| Redmine::CodesetUtil.from_utf8(c.caption.to_s, encoding) } +
-        (options[:description] ? [Redmine::CodesetUtil.from_utf8(l(:field_description), encoding)] : [])
+      csv << [ "#" ] + columns.collect {|c| Redmine::CodesetUtil.from_utf8(c.caption.to_s, encoding) }
 
       # csv lines
       issues.each do |issue|
@@ -387,8 +405,7 @@ module IssuesHelper
           end
           s.to_s
         end
-        csv << [ issue.id.to_s ] + col_values.collect {|c| Redmine::CodesetUtil.from_utf8(c.to_s, encoding) } +
-          (options[:description] ? [Redmine::CodesetUtil.from_utf8(issue.description, encoding)] : [])
+        csv << [ issue.id.to_s ] + col_values.collect {|c| Redmine::CodesetUtil.from_utf8(c.to_s, encoding) }
       end
     end
     export

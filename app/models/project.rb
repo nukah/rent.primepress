@@ -28,7 +28,7 @@ class Project < ActiveRecord::Base
 
   # Specific overidden Activities
   has_many :time_entry_activities
-  has_many :members, :include => [:user, :roles], :conditions => "#{User.table_name}.type='User' AND #{User.table_name}.status=#{User::STATUS_ACTIVE}"
+  has_many :members, :include => [:principal, :roles], :conditions => "#{User.table_name}.type='User' AND #{User.table_name}.status=#{User::STATUS_ACTIVE}"
   has_many :memberships, :class_name => 'Member'
   has_many :member_principals, :class_name => 'Member',
                                :include => :principal,
@@ -393,6 +393,16 @@ class Project < ActiveRecord::Base
     end
   end
 
+  # Recalculates all lft and rgt values based on project names
+  # Unlike Project.rebuild!, these values are recalculated even if the tree "looks" valid
+  # Used in BuildProjectsTree migration
+  def self.rebuild_tree!
+    transaction do
+      update_all "lft = NULL, rgt = NULL"
+      rebuild!(false)
+    end
+  end
+
   # Returns an array of the trackers used by the project and its active sub projects
   def rolled_up_trackers
     @rolled_up_trackers ||=
@@ -472,7 +482,7 @@ class Project < ActiveRecord::Base
   # Returns the users that should be notified on project events
   def notified_users
     # TODO: User part should be extracted to User#notify_about?
-    members.select {|m| m.mail_notification? || m.user.mail_notification == 'all'}.collect {|m| m.user}
+    members.select {|m| m.principal.present? && (m.mail_notification? || m.principal.mail_notification == 'all')}.collect {|m| m.principal}
   end
 
   # Returns an array of all custom fields enabled for project issues
@@ -721,7 +731,7 @@ class Project < ActiveRecord::Base
   def copy_wiki(project)
     # Check that the source project has a wiki first
     unless project.wiki.nil?
-      self.wiki ||= Wiki.new
+      wiki = self.wiki || Wiki.new
       wiki.attributes = project.wiki.attributes.dup.except("id", "project_id")
       wiki_pages_map = {}
       project.wiki.pages.each do |page|
@@ -733,6 +743,8 @@ class Project < ActiveRecord::Base
         wiki.pages << new_wiki_page
         wiki_pages_map[page.id] = new_wiki_page
       end
+
+      self.wiki = wiki
       wiki.save
       # Reproduce page hierarchy
       project.wiki.pages.each do |page|
@@ -778,7 +790,7 @@ class Project < ActiveRecord::Base
     # get copied before their children
     project.issues.find(:all, :order => 'root_id, lft').each do |issue|
       new_issue = Issue.new
-      new_issue.copy_from(issue, :subtasks => false)
+      new_issue.copy_from(issue, :subtasks => false, :link => false)
       new_issue.project = self
       # Reassign fixed_versions by name, since names are unique per project
       if issue.fixed_version && issue.fixed_version.project == project

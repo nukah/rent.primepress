@@ -62,9 +62,9 @@ class Mailer < ActionMailer::Base
     message_id journal
     references issue
     @author = journal.user
-    recipients = issue.recipients
+    recipients = journal.recipients
     # Watchers in cc
-    cc = issue.watcher_recipients - recipients
+    cc = journal.watcher_recipients - recipients
     s = "[#{issue.project.name} - #{issue.tracker.name} ##{issue.id}] "
     s << "(#{issue.status.name}) " if journal.new_value_for('status_id')
     s << issue.subject
