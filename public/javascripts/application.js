@@ -464,11 +464,9 @@ function updateBulkEditFrom(url) {
 }
 
 function observeAutocompleteField(fieldId, url) {
-  $(document).ready(function() {
-    $('#'+fieldId).autocomplete({
-      source: url,
-      minLength: 2
-    });
+  $('#'+fieldId).autocomplete({
+    source: url,
+    minLength: 2,
   });
 }
 

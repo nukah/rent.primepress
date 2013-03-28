@@ -844,7 +844,7 @@ de:
   button_show: Anzeigen
 
   status_active: aktiv
-  status_registered: nicht aktivierte
+  status_registered: angemeldet
   status_locked: gesperrt
 
   version_status_open: offen
@@ -1068,14 +1068,14 @@ de:
   field_timeout: Auszeit (in Sekunden)
   setting_thumbnails_enabled: Vorschaubilder von Dateianhängen anzeigen
   setting_thumbnails_size: Größe der Vorschaubilder (in Pixel)
-  label_status_transitions: Statusänderungen
-  label_fields_permissions: Feldberechtigungen
+  label_status_transitions: Status transitions
+  label_fields_permissions: Fields permissions
   label_readonly: Nur-Lese-Zugriff
   label_required: Erforderlich
   text_repository_identifier_info: 'Kleinbuchstaben (a-z), Ziffern, Binde- und Unterstriche erlaubt.<br />Einmal gespeichert, kann die Kennung nicht mehr geändert werden.'
-  field_board_parent: Übergeordnetes Forum
-  label_attribute_of_project: "%{name} des Projekts"
-  label_attribute_of_author: "%{name} des Autors"
-  label_attribute_of_assigned_to: "%{name} des Bearbeiters"
-  label_attribute_of_fixed_version: "%{name} der Zielversion"
-  label_copy_subtasks: Unteraufgaben kopieren
+  field_board_parent: Parent forum
+  label_attribute_of_project: Project's %{name}
+  label_attribute_of_author: Author's %{name}
+  label_attribute_of_assigned_to: Assignee's %{name}
+  label_attribute_of_fixed_version: Target version's %{name}
+  label_copy_subtasks: Copy subtasks

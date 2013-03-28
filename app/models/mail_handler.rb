@@ -124,7 +124,6 @@ class MailHandler < ActionMailer::Base
 
   def dispatch
     headers = [email.in_reply_to, email.references].flatten.compact
-    subject = email.subject.to_s
     if headers.detect {|h| h.to_s =~ MESSAGE_ID_RE}
       klass, object_id = $1, $2.to_i
       method_name = "receive_#{klass}_reply"
@@ -133,9 +132,9 @@ class MailHandler < ActionMailer::Base
       else
         # ignoring it
       end
-    elsif m = subject.match(ISSUE_REPLY_SUBJECT_RE)
+    elsif m = email.subject.match(ISSUE_REPLY_SUBJECT_RE)
       receive_issue_reply(m[1].to_i)
-    elsif m = subject.match(MESSAGE_REPLY_SUBJECT_RE)
+    elsif m = email.subject.match(MESSAGE_REPLY_SUBJECT_RE)
       receive_message_reply(m[1].to_i)
     else
       dispatch_to_default
@@ -245,26 +244,9 @@ class MailHandler < ActionMailer::Base
   def add_attachments(obj)
     if email.attachments && email.attachments.any?
       email.attachments.each do |attachment|
-        filename = attachment.filename
-        unless filename.respond_to?(:encoding)
-          # try to reencode to utf8 manually with ruby1.8
-          h = attachment.header['Content-Disposition']
-          unless h.nil?
-            begin
-              if m = h.value.match(/filename\*[0-9\*]*=([^=']+)'/)
-                filename = Redmine::CodesetUtil.to_utf8(filename, m[1])
-              elsif m = h.value.match(/filename=.*=\?([^\?]+)\?[BbQq]\?/)
-                # http://tools.ietf.org/html/rfc2047#section-4
-                filename = Redmine::CodesetUtil.to_utf8(filename, m[1])
-              end
-            rescue
-              # nop
-            end
-          end
-        end
         obj.attachments << Attachment.create(:container => obj,
                           :file => attachment.decoded,
-                          :filename => filename,
+                          :filename => attachment.filename,
                           :author => user,
                           :content_type => attachment.mime_type)
       end
@@ -391,8 +373,7 @@ class MailHandler < ActionMailer::Base
       # try to reencode to utf8 manually with ruby1.8
       begin
         if h = email.header[:subject]
-          # http://tools.ietf.org/html/rfc2047#section-4
-          if m = h.value.match(/=\?([^\?]+)\?[BbQq]\?/)
+          if m = h.value.match(/^=\?([^\?]+)\?/)
             subject = Redmine::CodesetUtil.to_utf8(subject, m[1])
           end
         end
