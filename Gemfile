@@ -8,6 +8,8 @@ gem "builder", "3.0.0"
 gem "deface"
 gem "unicorn"
 gem "unicorn-worker-killer"
+gem "dalli"
+gem "rack-cache"
 # Optional gem for LDAP authentication
 group :ldap do
   gem "net-ldap", "~> 0.3.1"
