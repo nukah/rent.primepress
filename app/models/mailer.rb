@@ -28,7 +28,7 @@ class Mailer < ActionMailer::Base
   end
 
   # Builds a mail for notifying to_users and cc_users about a new issue
-  def issue_add(issue, to_users, cc_users)
+  def issue_add(issue, to_users=[], cc_users=[])
     redmine_headers 'Project' => issue.project.identifier,
                     'Issue-Id' => issue.id,
                     'Issue-Author' => issue.author.login
@@ -54,7 +54,7 @@ class Mailer < ActionMailer::Base
   end
 
   # Builds a mail for notifying to_users and cc_users about an issue update
-  def issue_edit(journal, to_users, cc_users)
+  def issue_edit(journal, to_users=[], cc_users=[])
     issue = journal.journalized
     redmine_headers 'Project' => issue.project.identifier,
                     'Issue-Id' => issue.id,
