@@ -256,7 +256,7 @@ module Redmine
       def fetch_row_values(issue, query, level)
         query.inline_columns.collect do |column|
           s = if column.is_a?(QueryCustomFieldColumn)
-            cv = issue.custom_field_values.detect {|v| v.custom_field_id == column.custom_field.id}
+            cv = issue.visible_custom_field_values.detect {|v| v.custom_field_id == column.custom_field.id}
             show_value(cv)
           else
             value = issue.send(column.name)
@@ -314,11 +314,11 @@ module Redmine
         col_width_avg.map! {|x| x / k}
 
         # calculate columns width
-        ratio = table_width / col_width_avg.inject(0) {|s,w| s += w}
+        ratio = table_width / col_width_avg.inject(0, :+)
         col_width = col_width_avg.map {|w| w * ratio}
 
         # correct max word width if too many columns
-        ratio = table_width / word_width_max.inject(0) {|s,w| s += w}
+        ratio = table_width / word_width_max.inject(0, :+)
         word_width_max.map! {|v| v * ratio} if ratio < 1
 
         # correct and lock width of some columns
@@ -354,7 +354,7 @@ module Redmine
 
           # calculate column normalizing ratio
           if free_col_width == 0
-            ratio = table_width / col_width.inject(0) {|s,w| s += w}
+            ratio = table_width / col_width.inject(0, :+)
           else
             ratio = (table_width - fix_col_width) / free_col_width
           end
@@ -394,7 +394,7 @@ module Redmine
 
         # write the cells on page
         issues_to_pdf_write_cells(pdf, query.inline_columns, col_width, row_height, true)
-        issues_to_pdf_draw_borders(pdf, base_x, base_y, base_y + max_height, col_width)
+        issues_to_pdf_draw_borders(pdf, base_x, base_y, base_y + max_height, 0, col_width)
         pdf.SetY(base_y + max_height);
 
         # rows
@@ -426,13 +426,13 @@ module Redmine
         col_width = []
         unless query.inline_columns.empty?
           col_width = calc_col_width(issues, query, table_width, pdf)
-          table_width = col_width.inject(0) {|s,v| s += v}
+          table_width = col_width.inject(0, :+)
         end
 
         # use full width if the description is displayed
         if table_width > 0 && query.has_column?(:description)
           col_width = col_width.map {|w| w * (page_width - right_margin - left_margin) / table_width}
-          table_width = col_width.inject(0) {|s,v| s += v}
+          table_width = col_width.inject(0, :+)
         end
 
         # title
@@ -474,7 +474,7 @@ module Redmine
 
           # write the cells on page
           issues_to_pdf_write_cells(pdf, col_values, col_width, row_height)
-          issues_to_pdf_draw_borders(pdf, base_x, base_y, base_y + max_height, col_width)
+          issues_to_pdf_draw_borders(pdf, base_x, base_y, base_y + max_height, 0, col_width)
           pdf.SetY(base_y + max_height);
 
           if query.has_column?(:description) && issue.description?
@@ -493,8 +493,7 @@ module Redmine
       end
 
       # Renders MultiCells and returns the maximum height used
-      def issues_to_pdf_write_cells(pdf, col_values, col_widths,
-                                    row_height, head=false)
+      def issues_to_pdf_write_cells(pdf, col_values, col_widths, row_height, head=false)
         base_y = pdf.GetY
         max_height = row_height
         col_values.each_with_index do |column, i|
@@ -511,7 +510,10 @@ module Redmine
       end
 
       # Draw lines to close the row (MultiCell border drawing in not uniform)
-      def issues_to_pdf_draw_borders(pdf, top_x, top_y, lower_y, col_widths)
+      #
+      #  parameter "col_id_width" is not used. it is kept for compatibility.
+      def issues_to_pdf_draw_borders(pdf, top_x, top_y, lower_y,
+                                     col_id_width, col_widths)
         col_x = top_x
         pdf.Line(col_x, top_y, col_x, lower_y)    # id right border
         col_widths.each do |width|
@@ -569,8 +571,8 @@ module Redmine
           right << nil
         end
 
-        half = (issue.custom_field_values.size / 2.0).ceil
-        issue.custom_field_values.each_with_index do |custom_value, i|
+        half = (issue.visible_custom_field_values.size / 2.0).ceil
+        issue.visible_custom_field_values.each_with_index do |custom_value, i|
           (i < half ? left : right) << [custom_value.custom_field.name, show_value(custom_value)]
         end
 
@@ -681,7 +683,7 @@ module Redmine
             pdf.RDMCell(190,5, title)
             pdf.Ln
             pdf.SetFontStyle('I',8)
-            details_to_strings(journal.details, true).each do |string|
+            details_to_strings(journal.visible_details, true).each do |string|
               pdf.RDMMultiCell(190,5, "- " + string)
             end
             if journal.notes?

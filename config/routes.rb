@@ -16,13 +16,14 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 RedmineApp::Application.routes.draw do
-  root :to => 'welcome#index', :as => 'home'
-
+  root :to => 'projects#index', :as => 'home'
+  match 'projects/:project_id', :to => 'issues#index'
   match 'login', :to => 'account#login', :as => 'signin', :via => [:get, :post]
   match 'logout', :to => 'account#logout', :as => 'signout', :via => [:get, :post]
   match 'account/register', :to => 'account#register', :via => [:get, :post], :as => 'register'
   match 'account/lost_password', :to => 'account#lost_password', :via => [:get, :post], :as => 'lost_password'
   match 'account/activate', :to => 'account#activate', :via => :get
+  get 'account/activation_email', :to => 'account#activation_email', :as => 'activation_email'
 
   match '/news/preview', :controller => 'previews', :action => 'news', :as => 'preview_news', :via => [:get, :post, :put]
   match '/issues/preview/new/:project_id', :to => 'previews#issue', :as => 'preview_new_issue', :via => [:get, :post, :put]
@@ -99,9 +100,11 @@ RedmineApp::Application.routes.draw do
       match 'copy', :via => [:get, :post]
     end
 
-    resources :memberships, :shallow => true, :controller => 'members', :only => [:index, :show, :new, :create, :update, :destroy] do
-      collection do
-        get 'autocomplete'
+    shallow do
+      resources :memberships, :controller => 'members', :only => [:index, :show, :new, :create, :update, :destroy] do
+        collection do
+          get 'autocomplete'
+        end
       end
     end
 
@@ -134,12 +137,16 @@ RedmineApp::Application.routes.draw do
       get 'report', :on => :collection
     end
     resources :queries, :only => [:new, :create]
-    resources :issue_categories, :shallow => true
+    shallow do
+      resources :issue_categories
+    end
     resources :documents, :except => [:show, :edit, :update, :destroy]
     resources :boards
-    resources :repositories, :shallow => true, :except => [:index, :show] do
-      member do
-        match 'committers', :via => [:get, :post]
+    shallow do
+      resources :repositories, :except => [:index, :show] do
+        member do
+          match 'committers', :via => [:get, :post]
+        end
       end
     end
 
@@ -176,7 +183,9 @@ RedmineApp::Application.routes.draw do
         get 'report'
       end
     end
-    resources :relations, :shallow => true, :controller => 'issue_relations', :only => [:index, :show, :create, :destroy]
+    shallow do
+      resources :relations, :controller => 'issue_relations', :only => [:index, :show, :create, :destroy]
+    end
   end
   match '/issues', :controller => 'issues', :action => 'destroy', :via => :delete
 

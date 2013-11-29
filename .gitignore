@@ -31,4 +31,5 @@
 /.bundle
 /Gemfile.lock
 /Gemfile.local
-
+bundle/
+plugins/
